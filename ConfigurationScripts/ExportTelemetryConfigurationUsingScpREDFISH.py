@@ -36,7 +36,7 @@ parser.add_argument('-ip',help='iDRAC IP address', required=True)
 parser.add_argument('-u', help='iDRAC username', required=True)
 parser.add_argument('-p', help='iDRAC password', required=True)
 parser.add_argument('script_examples',action="store_true",help='ExportTelemetryConfigurationUsingScpREDFISH.py -ip 192.168.0.120 -u root -p calvin --filename SCP_export_R740.json, this example is going to export Telemetry attributes to local folder')
-parser.add_argument('--filename', help='Pass in unique filename for the Telemetry configuration json file whihc will be created in local folder', required=False)
+parser.add_argument('--filename', help='Pass in unique filename for the Telemetry configuration json file whihc will be created in local folder', required=True)
 
 args=vars(parser.parse_args())
 
@@ -107,8 +107,8 @@ def loop_job_status():
             logging.error("FAIL: job ID '{}' failed, failed message is: {}".format(job_id, data['Message']))
             sys.exit()
         elif data[u'JobState'] == "Completed":
-            logging.error("PASS: job ID '{}' completed with message is: {}".format(job_id, data['Message']))
             if data[u'Message'] == "Successfully exported Server Configuration Profile":
+                logging.info("PASS: job ID '{}' completed with message is: {}".format(job_id, data['Message']))
                 logging.info("PASS - Final Detailed Job Status {}".format(data[u'JobState']).center(50, '-'))
             else:
                 logging.error("FAIL - Final Detailed Job Status {}".format(data[u'JobState']).center(50,'-'))
