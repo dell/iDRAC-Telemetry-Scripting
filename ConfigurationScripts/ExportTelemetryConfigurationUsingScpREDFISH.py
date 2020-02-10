@@ -18,7 +18,7 @@
 
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import argparse
 import json
@@ -58,53 +58,52 @@ def export_server_configuration_profile():
     else:
         logging.info("Successfully created for ExportSystemConfiguration Job")
     try:
-        response_string = str(response.__dict__)
-        job_message=re.search("JID_.+?,",response_string).group()
+        response_output = response.__dict__
+        job_id = response_output["headers"]["Location"]
+        job_id = re.search("JID_.+", job_id).group()
+        logging.info("The job id for ExportSystemConfiguration Job is  '{}'.".format(job_id))
     except:    
         logging.error("FAIL: detailed error message: {0}".format(response.__dict__['_content']))
         sys.exit()
-    job_id=re.sub("[,']","",job_message)
-    response_output=response.__dict__
-    job_id=response_output["headers"]["Location"]
-    job_id=re.search("JID_.+",job_id).group()
-    logging.info("The job id for ExportSystemConfiguration Job is  '{}'.".format(job_id))
 
-def saveConfigurations(configurations):
+def save_configurations(configurations):
     try:
         json_file_name = args["filename"]
         logging.info("Saving the Telemetry configurations as '{}' in the folder {}".format(json_file_name,os.getcwd()))
         with open(json_file_name,"w") as file :
             file.write(json.dumps(configurations))
     except Exception as e:
-        logging.exception("Unable to save the Telemetry configuration as json file. the Exception is {}".format(str(e)))
+        logging.exception("Unable to save the Telemetry configuration as JSON file. the Exception is {}".format(str(e)))
 
 
-def doanloadscp():
-    req = requests.get('https://%s/redfish/v1/TaskService/Tasks/%s' % (idrac_ip, job_id),
+def download_scp():
+    response = requests.get('https://%s/redfish/v1/TaskService/Tasks/%s' % (idrac_ip, job_id),
                        auth = (idrac_username, idrac_password), verify = False)
-    scp_content = json.loads(req.content.decode())
+    if response.status_code != 200:
+        logging.error("FAIL, status code while getting the SCP content is not 200, code is: {}".format(response.status_code))
+        sys.exit()
+    scp_content = json.loads(response.content.decode())
     components = scp_content.get('SystemConfiguration', {}).get('Components', list(dict()))[0].get('Attributes',dict())
     telemetry_componenets  = list(filter(lambda x:re.search('Telemetry',x.get('Name'),re.IGNORECASE),components))
     if not telemetry_componenets:
         logging.error("No Telemetry configurations exist in the exported SCP. Exiting the script")
         sys.exit()
-    saveConfigurations(telemetry_componenets)
+    save_configurations(telemetry_componenets)
 
 def loop_job_status():
     start_time=datetime.now()
     while True:
-        req = requests.get('https://%s/redfish/v1/Managers/iDRAC.Embedded.1/Jobs/%s' % (idrac_ip, job_id), auth=(idrac_username, idrac_password), verify=False)
-        current_time=(datetime.now()-start_time)
-        statusCode = req.status_code
+        response = requests.get('https://%s/redfish/v1/Managers/iDRAC.Embedded.1/Jobs/%s' % (idrac_ip, job_id), auth=(idrac_username, idrac_password), verify=False)
+        statusCode = response.status_code
         if statusCode != 200:
             logging.error("FAIL, Command failed to check job status, return code is {}".format(statusCode))
-            logging.debug("Extended Info Message: {0}".format(req.json()))
+            logging.debug("Extended Info Message: {0}".format(response.json()))
             sys.exit()
-        data = req.json()
-        if str(current_time)[0:7] >= "0:05:00":
+        data = response.json()
+        if datetime.now() > (start_time + timedelta(minutes = 5)):
             logging.error("FAIL: Timeout of 5 minutes has been hit, script stopped")
             sys.exit()
-        elif "Fail" in data[u'Message'] or "fail" in data[u'Message']:
+        elif re.search('Fail', data[u'Message'],re.IGNORECASE):
             logging.error("FAIL: job ID '{}' failed, failed message is: {}".format(job_id, data['Message']))
             sys.exit()
         elif data[u'JobState'] == "Completed":
@@ -121,6 +120,6 @@ def loop_job_status():
 if __name__ == "__main__":
     export_server_configuration_profile()
     loop_job_status()
-    doanloadscp()
+    download_scp()
     
     
