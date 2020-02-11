@@ -1,13 +1,13 @@
 # iDRAC-Telemetry-Scripting  
   
-Python scripting for  Dell EMC PowerEdge iDRAC Telemetry  
+Python scripting for Dell EMC PowerEdge iDRAC Telemetry  
   
 Sample scripts written in Python that illustrate using the integrated Dell Remote Access Controller (iDRAC) REST API with Redfish to manage Dell EMC PowerEdge servers and configure Telemetry reports.  
 Also the library contains sample scripts for processing iDRAC Telemetry reports.   
   
 Telemetry Overview  
   
-This feature enables you to upload detailed parametric data like sensors, thermals, logfiles and more, to a database. You can select the type of data which is reported and its frequency.  
+This Datacenter licensed iDRAC feature enables you to upload detailed parametric data like sensors, thermals, logfiles and more, to a database. You can select the type of data which is reported and its frequency.  
   
 iDRAC with Lifecycle Controller Overview  
   
@@ -34,6 +34,7 @@ For details on the DMTF Redfish standard, visit https://www.dmtf.org/standards/r
   
   
 iDRAC Telemetry Scripting Library  
+
 This GitHub library contains example Python scripts that illustrate the usage of the iDRAC REST API with Redfish to perform the following actions:  
   
 Telemetry configurations operations  
@@ -44,7 +45,9 @@ Telemetry configurations operations
 
   
 Support  
+
 Please note this code is provided as-is and currently not supported by Dell EMC.  
   
 Report problems or provide feedback  
+
 If you run into any problems or would like to provide feedback, please open an issue here https://github.com/dell/iDRAC-Telemetry-Scripting/issues
