@@ -42,6 +42,15 @@ idrac_ip = args["ip"]
 idrac_username = args["u"]
 idrac_password = args["p"]
 
+def validate_telemetry_support():
+    url = 'https://{}/redfish/v1/TelemetryService'.format(idrac_ip)
+    headers = {'content-type': 'application/json'}
+    response = requests.get(url, headers = headers, verify = False,auth = (idrac_username, idrac_password))
+    if response.status_code != 200:
+        logging.warning("Script can not be executed as Datacenter license is not installed or iDRAC firmware does not support Telemetry.")
+        logging.warning(json.loads(response.text).get("error",{}).get("@Message.ExtendedInfo",[{}])[0].get("Message",""))
+        sys.exit(0)
+
 def add_subscription():
     destination = args["d"]
     context_id = args["c"]
@@ -63,4 +72,5 @@ def add_subscription():
     logging.info("Pass - Successfully added a Redfish subscription to '{}' with context id '{}'".format(destination,context_id))
 
 if __name__ == "__main__":
+    validate_telemetry_support()
     add_subscription()
