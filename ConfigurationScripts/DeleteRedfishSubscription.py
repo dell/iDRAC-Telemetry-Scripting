@@ -102,13 +102,12 @@ def delete_subscription(subscription_id):
             "FAIL, status code for deleting subscription is not 200, code is: {}".format(response.status_code))
         if hasattr(response, 'text'):
             logging.error("FAIL, The response is: {}".format(response.text))
-    sys.exit()
 
 def delete_subscriptions():
     if args["a"]:
         args.update({'v':True})
         subscription_ids = view_subscriptions()
-        list(map(delete_subscription,subscription_ids))
+        response = list(map(delete_subscription,subscription_ids))
         sys.exit()
     elif args["d"]:
         subscription_id = args["d"]
