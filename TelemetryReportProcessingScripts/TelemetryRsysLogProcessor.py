@@ -1,12 +1,12 @@
 #
-# TelemetryRsysLogProcessor.py Python script to reconstruct the Telemetry reports from Rsyslogfiles..
+# TelemetryRsysLogProcessor.py Python script to reconstruct the Telemetry reports from Rsyslogfiles.
 #
 #
 #
 # _author_ = Sankunny Jayaprasad <Sankunny.Jayaprasad@Dell.com>
 # _version_ = 1.0
 #
-# Copyright (c) 2020, Dell, Inc.
+# Copyright (c) 2022, Dell, Inc.
 #
 # This software is licensed to you under the GNU General Public License,
 # version 2 (GPLv2). There is NO WARRANTY for this software, express or
@@ -18,46 +18,51 @@
 import argparse
 import glob
 import json
-import os
-from datetime import datetime
-from pyparsing import *
 import logging
+import os
 import sys
-import time
 import threading
+import time
+from datetime import datetime
 from logging import handlers
+from pyparsing import *
 
-
-parser = argparse.ArgumentParser( description = "Python script to reconstruct the Telemetry reports from Rsyslogfiles.")
-parser.add_argument('-s', help = 'Folder path to Rsyslog files. Example \'/var/log/**/*.log\'', required = True)
-parser.add_argument('-d', help = 'Destination folder where the JSON reports files to be saved.',default = os.getcwd(), required = False)
-parser.add_argument('script_examples', action = "store_true",
-                    help = "'python TelemetryRsysLogProcessor.py -s /var/log/**/*.log -d /tmp/Rsyslogs/' to process the Rsyslogfiles "
-                           "'from /var/log/**/ folder and save them under /tmp/Rsyslogs/'. The script will continue to execute and process all new messages.' "
-                           "Kill the scriot to stop processing. The log files will be rotated every day.")
+parser = argparse.ArgumentParser(description="Python script to reconstruct the Telemetry reports from Rsyslogfiles.")
+parser.add_argument('-s', help='Folder path to Rsyslog files. Example \'/var/log/**/*.log\'', required=True)
+parser.add_argument('-d', help='Destination folder where the JSON reports files to be saved.', default=os.getcwd(),
+                    required=False)
+parser.add_argument('script_examples', action="store_true",
+                    help="'python TelemetryRsysLogProcessor.py -s /var/log/**/*.log -d /tmp/Rsyslogs/' to process the Rsyslogfiles "
+                         "'from /var/log/**/ folder and save them under /tmp/Rsyslogs/'. The script will continue to execute and process all new messages.' "
+                         "Kill the scriot to stop processing. The log files will be rotated every day.")
 args = vars(parser.parse_args())
 
-LOG_PATH = os.path.join(os.getcwd(),'{}_{}.txt'.format('MultiThreadRsyslogProcessor_log',(datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))))
-file_handler = logging.handlers.TimedRotatingFileHandler(filename=LOG_PATH, when='d', interval=1, backupCount=0, encoding=None, delay=False, utc=False, atTime=None)
+LOG_PATH = os.path.join(os.getcwd(), '{}_{}.txt'.format('MultiThreadRsyslogProcessor_log',
+                                                        (datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))))
+file_handler = logging.handlers.TimedRotatingFileHandler(filename=LOG_PATH, when='d', interval=1, backupCount=0,
+                                                         encoding=None, delay=False, utc=False, atTime=None)
 stdout_handler = logging.StreamHandler(sys.stdout)
 handlers = [file_handler, stdout_handler]
-logging.basicConfig(level=logging.INFO,format='[%(asctime)s] %(levelname)s - %(message)s',handlers=handlers) # set logging level to DEBUG to have complete processing logs
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s',
+                    handlers=handlers)  # set logging level to DEBUG to have complete processing logs
 logger = logging.getLogger('RsysLogProcessor')
 
 rsyslog_path = args["s"]
 destination_folder = args["d"]
 
+
 class TelemetryRsyslogParser(object):
     def __init__(self):
-        self.__pattern =  self.generate_Rsyslog_message_pattern()
+        self.__pattern = self.generate_Rsyslog_message_pattern()
 
     def generate_Rsyslog_message_pattern(self):
         ints = Word(nums)
-        timestamp = Combine(
-            ints + "-" + ints + "-" + ints + 'T' + ints + ":" + ints + ":" + ints + "." + ints + "-" + ints + ":" + ints)
+        timestamp = Combine(ints + "-" + ints + "-" + ints + 'T' + ints + ":" + ints + ":" + ints + "." + ints +
+                            "-" + ints + ":" + ints)
         hostname = Word(alphas + nums + "-" + ".")  # pyparsing_common.ipv4_address
         appname = Word(alphas + "-" + nums) + Suppress(":")
-        context = Suppress("#") + Word(alphas) + Suppress("#") + Suppress(":") + Word(nums) + "-" + Word(nums) + "-" + Word(nums) + Suppress(":")
+        context = Suppress("#") + Word(alphas) + Suppress("#") + Suppress(":") + Word(nums) + "-" + Word(
+            nums) + "-" + Word(nums) + Suppress(":")
         message = Regex(".*")
         return timestamp + hostname + appname + context + message
 
@@ -72,7 +77,7 @@ class TelemetryRsyslogParser(object):
             payload["chunks_count"] = parsed[6]
             payload["chunkId"] = parsed[8]
             payload["message"] = parsed[9]
-        except Exception as e:
+        except:
             logger.exception("Unable to parse line '{}'".format(line))
         return payload
 
@@ -87,14 +92,14 @@ class TelemetryRsyslogParser(object):
 
     def write_telemetry_report_json(self, idrac_name, report, report_index):
         id = report.get('Id', 'UnknownId')
-        report_folder = os.path.join(destination_folder,idrac_name)
+        report_folder = os.path.join(destination_folder, idrac_name)
         report_sequence = report.get('ReportSequence', '00000')
         report_timestamp = report.get('Timestamp', '00000')
-        file_name = str("_".join([id,report_sequence,report_timestamp.replace(":","-")])) + ".json"
+        file_name = str("_".join([id, report_sequence, report_timestamp.replace(":", "-")])) + ".json"
         if not os.path.exists(report_folder):
             os.makedirs(report_folder)
-        logging.debug("Saving the Telemetry report {} for iDDRAC {}".format(file_name,idrac_name))
-        with open(os.path.join(report_folder,file_name),"w") as file :
+        logging.debug("Saving the Telemetry report {} for iDRAC {}".format(file_name, idrac_name))
+        with open(os.path.join(report_folder, file_name), "w") as file:
             file.write(json.dumps(report))
 
     def monitor_Rsyslog_files(self, filename):
@@ -104,7 +109,6 @@ class TelemetryRsyslogParser(object):
         file_modified_time = time.time()
         file.seek(st_size)
         currently_processing_index = -1
-        idrac_name = None
         reports_dict = {}
         raw_report = []
         while 1:
@@ -137,24 +141,24 @@ class TelemetryRsyslogParser(object):
                     for chunk_ids in sorted(reports_dict[idrac_name][current_report_index].keys()):
                         raw_report.append(reports_dict[idrac_name][current_report_index][chunk_ids])
                 if raw_report and self.save_telemetry_report(idrac_name, raw_report, current_report_index):
-                    logger.debug("Finished processing Index: {} of idrac {}".format(current_report_index,idrac_name))
+                    logger.debug("Finished processing Index: {} of idrac {}".format(current_report_index, idrac_name))
                     del reports_dict[idrac_name][current_report_index]
                 time.sleep(0.001)
-                # already has newline
+
 
 if __name__ == "__main__":
     parser = TelemetryRsyslogParser()
     threads = list()
     monitoring_log_files = []
     while True:
-        rsys_logs = glob.glob(rsyslog_path, recursive = True)
+        rsys_logs = glob.glob(rsyslog_path, recursive=True)
         idrac_rsyslogs = list(filter(lambda x: ('idrac' in str(x).lower() and str(x).endswith('.log')), rsys_logs))
         for log_file in idrac_rsyslogs:
             try:
                 if log_file in monitoring_log_files:
                     continue
                 logger.info(("Processing file '{}'".format(log_file)).center(100, '*'))
-                x = threading.Thread(target = parser.monitor_Rsyslog_files, args = (log_file,), name = log_file)
+                x = threading.Thread(target=parser.monitor_Rsyslog_files, args=(log_file,), name=log_file)
                 threads.append(x)
                 x.start()
                 monitoring_log_files.append(log_file)
@@ -162,4 +166,3 @@ if __name__ == "__main__":
                 if log_file in monitoring_log_files: monitoring_log_files.remove(log_file)
                 logger.error("Error occurred while processing '{}'  and error is {}".format(log_file, e))
         time.sleep(2)
-    logger.info("Finished Execution")
