@@ -1,6 +1,6 @@
 #
-# SubscriptionManagementREDFISH. Python script using Redfish API to either get event service properties, get event
-# subscriptions, create / delete subscriptions or submit test event.
+# Python script using Redfish API to either get event service properties, get event
+# subscriptions, create / delete subscriptions or submit test event, or create an SSE client
 #
 # _author_ = Texas Roemer <Texas_Roemer@Dell.com>
 # _author_ = Grant Curell <grant_curell@dell.com>
@@ -24,8 +24,9 @@ import re
 import sys
 import time
 import warnings
-from pprint import pprint
+from getpass import getpass
 from pprint import pformat
+from pprint import pprint
 
 import requests
 
@@ -42,8 +43,6 @@ parser.add_argument('--get-event-properties', '-e', action="store_true", help='G
 parser.add_argument('--get-subscriptions', '-s', help='Retrieve a list of current subscriptions. Pass in argument'
                     ' \'detailed\' for a more verbose description of subscriptions.', required=False,
                     choices=['detailed', 'simple'], dest='get_subscriptions')
-parser.add_argument('--create-subscription', '-c', action="store_true", help='Create a new subscription. This must be '
-                    'accompanied by the arguments -D, -V and -E.', required=False, dest='create_subscription')
 parser.add_argument('--test-event', '-t', action="store_true", help='Submit test event. You must also use arguments '
                     '-D, -E and -M to submit a test event', required=False, dest='test_event')
 parser.add_argument('--destination-url', '-D', help='Pass in destination HTTPS URI path for either create '
@@ -53,17 +52,20 @@ parser.add_argument('--format-type', '-V', help='Pass in Event Format Type for c
 parser.add_argument('--event-type', '-E', help='The EventType value for either create subscription or send test '
                     'event. Supported values are StatusChange, ResourceUpdated, ResourceAdded, ResourceRemoved, '
                     'Alert, MetricReport.', required=False, dest='event_type')
-parser.add_argument('--subscription-type', '-b', help='Controls the type of subscription created. \'See Telemetry '
-                    'Streaming with iDRAC9 — What you Need to Get Started\' for detailed information. The default '
-                    'option is to create an HTTP POST subscription. You can also set up a RedFish client with HTTP '
-                    'Server Sent Events (SSE). Options are POST and SSE. When using the type SSE, this will open a '
-                    'connection to the server and then print the output to console', choices=['POST', 'SSE'],
-                    default='POST', dest='subscription_type')
+group = parser.add_mutually_exclusive_group()
+group.add_argument('--create-subscription', '-c', action="store_true", help='Create a new subscription. This must be '
+                   'accompanied by the arguments -D, -V and -E.', required=False, dest='create_subscription')
+group.add_argument('--sse-client', '-l', help="Create an SSE client. This will listen to SSE events until "
+                   "terminated.", dest='sse', required=False, action='store_true')
+parser.add_argument('--log-file', '-f', help="Log SSE data to a file in addition to the console.", required=False,
+                    dest='log_file')
 parser.add_argument('--message-id', '-M', help='Pass in MessageID for sending test event. Example: TMP0118',
                     required=False, dest='message_type')
 parser.add_argument('--delete', help='Pass in complete service subscription URI to delete. Execute -s argument if '
                     'needed to get subscription URIs', required=False)
 args = vars(parser.parse_args())
+
+# TODO - bare exception handlers should be removed
 
 
 def validate_telemetry_support(idrac_ip: str, idrac_username: str, idrac_password: str):
@@ -339,12 +341,12 @@ def create_post_subscription(idrac_ip: str, idrac_username: str, idrac_password:
     if response.__dict__["status_code"] == 201:
         logging.info("POST command succeeded, status code 201 returned, subscription successfully set for EventService")
     else:
-        logging.error("FAIL. POST command failed, status code %s returned, error is %s" %
-                      (response.__dict__["status_code"], response.__dict__["_content"]))
+        logging.error("FAIL. POST command failed, status code %s returned, error is:")
+        pprint(response.json())
         sys.exit(0)
 
 
-def create_sse_subscription(idrac_ip: str, idrac_username: str, idrac_password: str):
+def create_sse_client(idrac_ip: str, idrac_username: str, idrac_password: str, log_file: str):
     """
     Creates an SSE connection to a target. This code is mostly meant as a simple demonstration of how to create a
     simple SSE client. It will print all output to console. Currently, it will grab all reports and I have not added
@@ -353,14 +355,20 @@ def create_sse_subscription(idrac_ip: str, idrac_username: str, idrac_password: 
     :param idrac_ip: IP address of the target iDRAC
     :param idrac_username: Username of the target iDRAC
     :param idrac_password: Password of the target iDRAC
+    :param log_file: An optional log file to write the data
     """
+    if log_file:
+        file_descriptor = open(log_file, 'w')
     logging.info("Starting SSE client...")
+    logging.warning("Code will not gracefully exit. Use ctrl+c to kill stream.")
     messages = SSEClient("https://%s/redfish/v1/SSE?$filter=EventFormatType eq MetricReport" % idrac_ip,
                          headers={'content-type': 'application/json'},
                          verify=False,
                          auth=(idrac_username, idrac_password))
     for sse_event in messages:
         pprint(sse_event.data)
+        if log_file:
+            file_descriptor.write(sse_event.data + "\n")
 
 
 def submit_test_event(idrac_ip: str, idrac_username: str, idrac_password: str, destination_url: str,
@@ -386,8 +394,8 @@ def submit_test_event(idrac_ip: str, idrac_username: str, idrac_password: str, d
         logging.info("POST command succeeded, status code 201 returned, event type \"%s\" successfully sent to " 
                      "destination \"%s\"" % (event_type, destination_url))
     else:
-        logging.error("FAIL. POST command failed, status code %s returned, error is %s" %
-                      (response.__dict__["status_code"], response.__dict__["_content"]))
+        logging.error("FAIL. POST command failed, status code %s returned, error is:")
+        pprint(response.json())
         sys.exit(0)
 
 
@@ -396,27 +404,38 @@ def print_examples():
     Print program examples and exit
     """
     print(
-        '\'SubscriptionManagementREDFISH.py -ip 192.168.0.120 -u root -p calvin --get-subscriptions simple\' - Get current subscription URIs and details.\n'
-        '\'SubscriptionManagementREDFISH.py -ip 192.168.0.120 -u root -p calvin --create-subscription --destination-url https://192.168.0.130 --event-type Alert --format-type MetricReport\' - Create a MetricReport, POST-based, subscription for alert events which will use 192.168.0.130 Redfish event listener.\n'
-        '\'SubscriptionManagementREDFISH.py -ip 192.168.0.120 -u root -p calvin --delete /redfish/v1/EventService/Subscriptions/c1a71140-ba1d-11e9-842f-d094662a05e6\' - Delete a subscription\n'
-        '\'SubscriptionManagementREDFISH.py -ip 192.168.0.120 -u root -p calvin --create-subscription --subscription-type SSE\' - Create an SSE client and log received events to console.')
+        '\'("ManageTelemetryConnections.py -ip 192.168.0.120 -u root -p calvin --get-subscriptions simple\' - Get current subscription URIs and details.\n'
+        '\'("ManageTelemetryConnections.py -ip 192.168.0.120 -u root -p calvin --create-subscription --destination-url https://192.168.0.130 --event-type Alert --format-type Event\' - Create a MetricReport, POST-based, subscription for alert events which will use 192.168.0.130 Redfish event listener.\n'
+        '\'("ManageTelemetryConnections.py -ip 192.168.0.120 -u root -p calvin --delete /redfish/v1/EventService/Subscriptions/c1a71140-ba1d-11e9-842f-d094662a05e6\' - Delete a subscription\n'
+        '\'("ManageTelemetryConnections.py -ip 192.168.0.120 -u root -p calvin --create-subscription --subscription-type SSE\' - Create an SSE client and log received events to console.')
     sys.exit(0)
 
 
+if not args["idrac_password"]:
+    if not sys.stdin.isatty():
+        # notify user that they have a bad terminal
+        # perhaps if os.name == 'nt': , prompt them to use winpty?
+        logging.error("Your terminal is not compatible with Python's getpass module. You will need to provide the"
+                      " --password argument instead. See https://stackoverflow.com/a/58277159/4427375")
+        sys.exit(0)
+    else:
+        args["idrac_password"] = getpass()
+
 if not args["script_examples"]:
-    if not args["idrac_ip"] or not args["idrac_username"] or not args["idrac_password"]:
-        logging.error("When not using the --script-examples argument -ip, -u, and -p are required arguments.")
+    if not args["idrac_ip"] or not args["idrac_username"]:
+        logging.error("When not using the --script-examples argument -ip and -u are required arguments.")
         sys.exit(0)
     else:
         validate_telemetry_support(args["idrac_ip"], args["idrac_username"], args["idrac_password"])
 
-if args["subscription_type"] == 'SSE':
+if args["sse"]:
     try:
         from sseclient import SSEClient
     except ModuleNotFoundError:
         print("To use the SSE functionality you need the library sseclient. Install it with `pip install sseclient`")
         sys.exit(0)
 
+logging.basicConfig(level=logging.INFO)
 
 if __name__ == "__main__":
 
@@ -427,16 +446,15 @@ if __name__ == "__main__":
     elif args["get_subscriptions"]:
         get_event_service_subscriptions(args["idrac_ip"], args["idrac_username"], args["idrac_password"],
                                         args["get_subscriptions"])
-    elif args["create_subscription"] and args["destination_url"] and args["event_type"] and args["format_type"] \
-            and args["subscription_type"] == 'POST':
+    elif args["create_subscription"] and args["destination_url"] and args["event_type"] and args["format_type"]:
+        if args["event_type"] == "Alert" and args["format_type"] != "Event":
+            logging.error("When event type is Alert the format type must be Event.")
+            sys.exit(0)
         get_set_ipmi_alert_idrac_setting(args["idrac_ip"], args["idrac_username"], args["idrac_password"])
         create_post_subscription(args["idrac_ip"], args["idrac_username"], args["idrac_password"],
                                  args["destination_url"], args["event_type"], args["format_type"])
-    elif args["create_subscription"] and args["destination_url"] and args["subscription_type"] == 'SSE':
-        if args["format_type"] and args["format_type"] != "MetricReport":
-            logging.error("The format type when using SSE can only be MetricReport.")
-            sys.exit(0)
-        create_sse_subscription(args["idrac_ip"], args["idrac_username"], args["idrac_password"])
+    elif args["sse"]:
+        create_sse_client(args["idrac_ip"], args["idrac_username"], args["idrac_password"], args["log_file"])
     elif args["test_event"] and args["destination_url"] and args["event_type"] and args["message_type"]:
         submit_test_event(args["idrac_ip"], args["idrac_username"], args["idrac_password"],
                           args["destination_url"], args["event_type"], args["message_id"])
