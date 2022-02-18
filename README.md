@@ -1,4 +1,12 @@
 # iDRAC-Telemetry-Scripting  
+
+- [iDRAC-Telemetry-Scripting](#idrac-telemetry-scripting)
+  - [Telemetry Overview](#telemetry-overview)
+  - [Available Scripts](#available-scripts)
+  - [iDRAC with Lifecycle Controller Overview](#idrac-with-lifecycle-controller-overview)
+  - [Learning more about iDRAC and Telemetry](#learning-more-about-idrac-and-telemetry)
+  - [iDRAC Telemetry Scripting Library](#idrac-telemetry-scripting-library)
+  - [Support](#support)
   
 Python scripting for Dell EMC PowerEdge iDRAC Telemetry  
   
@@ -25,6 +33,20 @@ iDRAC telemetry allows you to stream telemetry data from your servers to a centr
 - General host performance
 - Serial logs
 - CPU registers
+
+## Available Scripts
+
+- AddRedfishSubscription.py: Adds a POST subscription to the iDRAC
+- DeleteRedfishSubscription:  deletes a subscription from iDRAC
+- EnableOrDisableAllTelemetryReports: Enables or disables all telemetry reports on the iDRAC. You can later filter which reports are or aren't sent for a given subscription.
+- ExportTelemetryConfigurationUsingScpREDFISH.py - Exports a telemetry configuration using a server configuration profile
+- ImportTelemetryConfigurationUsingScpREDFISH.py - Imports a telemetry configuration using a server configuration profile
+- ManageTelemetryConnections.py - Provides a comprehensive script for managing various connections to telemetry. This includes the following functionality:
+  - Listing POST subscriptions on a target server
+  - Deleting POST subscriptions on a target server
+  - Sending POST test events to a target device
+  - Adding POST subscriptions to a target device
+  - Run an SSE client and dump the output to console
   
 ## iDRAC with Lifecycle Controller Overview  
   
