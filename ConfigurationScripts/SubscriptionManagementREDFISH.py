@@ -6,7 +6,7 @@
 #
 # _author_ = Texas Roemer <Texas_Roemer@Dell.com>
 # _author_ = Grant Curell <grant_curell@dell.com>
-# _version_ = 3.0
+# _version_ = 4.0
 #
 # Copyright (c) 2022, Dell, Inc.
 #
@@ -63,7 +63,7 @@ parser.add_argument('--message-id', '-M', help='Pass in MessageID for sending te
 parser.add_argument('--delete', help='Pass in complete service subscription URI to delete. Execute -s argument if '
                     'needed to get subscription URIs', required=False)
 args = vars(parser.parse_args())
-
+logging.basicConfig(format='%(message)s', stream=sys.stdout, level=logging.INFO)
 
 def validate_telemetry_support(idrac_ip: str, idrac_username: str, idrac_password: str):
     """
@@ -78,18 +78,18 @@ def validate_telemetry_support(idrac_ip: str, idrac_username: str, idrac_passwor
     headers = {'content-type': 'application/json'}
     response = requests.get(url, headers=headers, verify=False, auth=(idrac_username, idrac_password))
     if response.status_code == 401:
-        logging.error("Status code 401 returned for GET request, invalid user credentials detected.")
+        logging.error("- ERROR, status code 401 returned for GET request, invalid user credentials detected.")
         sys.exit(0)
     iDRAC_datacenter_license = "no"
     data = response.json()
     if response.status_code != 200:
-        logging.error("Status code %s returned for GET request" % response.status_code)
+        logging.error("- ERROR, status code %s returned for GET request" % response.status_code)
         sys.exit(0)
     for i in data["Members"]:
         if "Data Center" in str(i["LicenseDescription"]):
             iDRAC_datacenter_license = "yes"
     if iDRAC_datacenter_license == "no":
-        logging.error("Script can not be executed because either the Datacenter license is not installed or iDRAC firmware does not support Telemetry.")
+        logging.error("- ERROR, script can not be executed because either the Datacenter license is not installed or iDRAC firmware does not support Telemetry.")
         sys.exit(0)
 
 
@@ -139,7 +139,11 @@ def get_event_service_properties(idrac_ip: str, idrac_username: str, idrac_passw
     print("\n- EventService URI property details for iDRAC %s -\n"  % idrac_ip)
     response = requests.get('https://%s/redfish/v1/EventService' % idrac_ip, verify=False,
                             auth=(idrac_username, idrac_password))
-    logging.info("GET command output for EventService URI\n")
+    if response.status_code == 200:
+        logging.info("- PASS, GET command passed to get EventService URI details\n")
+    else:
+        logging.error("- ERROR, GET request failed to get subscription details, status code %s returned" % response.status_code)
+        sys.exit(0)
     pprint(response.json())
 
 
@@ -158,21 +162,21 @@ def get_event_service_subscriptions(idrac_ip: str, idrac_username: str, idrac_pa
                             auth=(idrac_username, idrac_password))
     data = response.json()
     if response.status_code != 200:
-        logging.error("GET request failed to get subscription details, status code %s returned" % response.status_code)
+        logging.error("- ERROR, GET request failed to get subscription details, status code %s returned" % response.status_code)
         sys.exit(0)    
     if not data["Members"]:
-        print("\n- ERROR, no subscriptions found for iDRAC %s" % idrac_ip)
+        logging.error("\n- ERROR, no subscriptions found for iDRAC %s" % idrac_ip)
         sys.exit(0)
     else:
-        print("\n- Subscriptions found for iDRAC ip %s -\n" % idrac_ip)
+        logging.info("\n- Subscriptions found for iDRAC %s -\n" % idrac_ip)
     for subscription in data["Members"]:
-        print("%s\n" % subscription['@odata.id'])
+        print("%s" % subscription['@odata.id'])
         if subscription_detail == "detailed":
             response = requests.get('https://%s%s' % (idrac_ip, subscription['@odata.id']), verify=False,auth=(idrac_username, idrac_password))
             if response.status_code != 200:
-                logging.error("GET request failed to get subscription details, status code %s returned" % response.status_code)
+                logging.error("- ERROR, GET request failed to get subscription details, status code %s returned" % response.status_code)
                 sys.exit(0) 
-            logging.info("Detailed information for subscription %s\n" % subscription['@odata.id'])
+            logging.info("- Detailed information for subscription %s\n" % subscription['@odata.id'])
             pprint(response.json())
             print("\n")
 
@@ -191,9 +195,9 @@ def delete_subscriptions(idrac_ip: str, idrac_username: str, idrac_password: str
     headers = {'content-type': 'application/json'}
     response = requests.delete(url, headers=headers, verify=False, auth=(idrac_username, idrac_password))
     if response.__dict__["status_code"] == 200:
-        print("\n- PASS, DELETE command successfully deleted subscription %s" % args["delete"])
+        logging.info("\n- PASS, DELETE command successfully deleted subscription %s" % args["delete"])
     else:
-        logging.error("FAIL - DELETE command failed and returned status code %s, error is %s" %
+        logging.error("\n- FAIL, DELETE command failed and returned status code %s, error:\n%s" %
                       (response.__dict__["status_code"], response.__dict__["_content"]))
         sys.exit(0)
 
@@ -220,30 +224,30 @@ def scp_set_idrac_attribute(idrac_ip: str, idrac_username: str, idrac_password: 
     except:
         logging.error("\n- FAIL: detailed error message: {0}".format(response.__dict__['_content']))
         sys.exit(0)
-    print("- PASS, job ID %s successfully created" % job_id)
+    logging.info("- PASS, job ID %s successfully created" % job_id)
     while True:
         response = requests.get('https://%s/redfish/v1/TaskService/Tasks/%s' % (idrac_ip, job_id), auth=(idrac_username, idrac_password), verify=False)
         data = response.json()
         message_string = data["Messages"]
         final_message_string = str(message_string)
         if response.status_code == 202 or response.status_code == 200:
-            print("- PASS, GET command to get job status details")
+            logging.info("- PASS, GET command to get job status details")
             time.sleep(1)
         else:
-            logging.error("Query job ID command failed, error code is: %s" % status_code)
+            logging.error("- ERROR, query job ID command failed, error code %s returned" % status_code)
             sys.exit(0)
         if "failed" in final_message_string or "completed with errors" in final_message_string or\
                 "Not one" in final_message_string:
-            logging.error("FAIL. Detailed job message is: %s" % data["Messages"])
+            logging.error("- FAIL, detailed job message is: %s" % data["Messages"])
             sys.exit(0)
         elif "Successfully imported" in final_message_string or "completed with errors" in final_message_string or\
                 "Successfully imported" in final_message_string:
             logging.info("Job ID = " + data["Id"])
             logging.info("Name = " + data["Name"])
             try:
-                logging.info("Message = \n" + message_string[0]["Message"])
+                logging.info("- INFO, Message = \n" + message_string[0]["Message"])
             except:
-                logging.info("Message = %s\n" % message_string[len(message_string) - 1]["Message"])
+                logging.info("- INFO, Message = %s\n" % message_string[len(message_string) - 1]["Message"])
             break
         elif "No changes" in final_message_string:
             logging.info("Job ID = " + data["Id"])
@@ -273,7 +277,7 @@ def get_set_ipmi_alert_idrac_setting(idrac_ip: str, idrac_username: str, idrac_p
     response = requests.get('https://%s/redfish/v1/Managers/iDRAC.Embedded.1/Attributes' % idrac_ip, verify=False, auth=(idrac_username, idrac_password))
     data = response.json()
     if response.status_code != 200:
-            logging.error("GET command failed to get iDRAC attributes, status code %s returned" % status_code)
+            logging.error("- ERROR, GET command failed to get iDRAC attributes, status code %s returned" % status_code)
             sys.exit(0)
     while True:
         try:
@@ -285,7 +289,7 @@ def get_set_ipmi_alert_idrac_setting(idrac_ip: str, idrac_username: str, idrac_p
             scp_set_idrac_attribute(idrac_ip, idrac_username, idrac_password)
             break
 
-        logging.info("Checking current value for iDRAC attribute \"IPMILan.1.AlertEnable\"")
+        logging.info("\n- INFO, checking current value for iDRAC attribute \"IPMILan.1.AlertEnable\"")
 
         if attributes_dict["IPMILan.1.AlertEnable"] == "Disabled":
             logging.info("Current value for iDRAC attribute \"IPMILan.1.AlertEnable\" is set to Disabled, "
@@ -296,7 +300,7 @@ def get_set_ipmi_alert_idrac_setting(idrac_ip: str, idrac_username: str, idrac_p
             response = requests.patch(url, data=json.dumps(payload), headers=headers, verify=False, auth=(idrac_username, idrac_password))
             status_code = response.status_code
             if status_code == 200:
-                logging.info("PATCH command succeeded and set iDRAC attribute \"IPMILan.1.AlertEnable\" to enabled")
+                logging.info("- PASS, PATCH command succeeded and set iDRAC attribute \"IPMILan.1.AlertEnable\" to enabled")
             else:
                 logging.error("FAIL. PATCH command failed to set iDRAC attribute \"IPMILan.1.AlertEnable\" to enabled")
                 sys.exit(0)
@@ -305,13 +309,13 @@ def get_set_ipmi_alert_idrac_setting(idrac_ip: str, idrac_username: str, idrac_p
             data = response.json()
             attributes_dict = data['Attributes']
             if attributes_dict["IPMILan.1.AlertEnable"] == "Enabled":
-                logging.info("iDRAC attribute \"IPMILan.1.AlertEnable\" successfully set to Enabled")
+                logging.info("- PASS, iDRAC attribute \"IPMILan.1.AlertEnable\" successfully set to Enabled")
                 break
             else:
-                logging.error("FAIL. iDRAC attribute \"IPMILan.1.AlertEnable\" not set to Enabled")
+                logging.error("- FAIL, iDRAC attribute \"IPMILan.1.AlertEnable\" not set to Enabled")
                 sys.exit(0)
         else:
-            print("\n- INFO, current value for iDRAC attribute \"IPMILan.1.AlertEnable\" already set to Enabled, "
+            logging.info("- INFO, current value for iDRAC attribute \"IPMILan.1.AlertEnable\" already set to Enabled, "
                             "ignore PATCH command")
             break
 
@@ -338,9 +342,9 @@ def create_post_subscription(idrac_ip: str, idrac_username: str, idrac_password:
     response = requests.post(url, data=json.dumps(payload), headers=headers, verify=False,
                              auth=(idrac_username, idrac_password))
     if response.__dict__["status_code"] == 201:
-        print("\n- PASS, POST command passed to create new subscription")
+        logging.info("- PASS, POST command passed to create new subscription")
     else:
-        logging.error("FAIL. POST command failed, status code %s returned, error is %s" %
+        logging.error("\n- FAIL, POST command failed to create subscription, status code %s returned, error:\n%s" %
                       (response.__dict__["status_code"], response.__dict__["_content"]))
         sys.exit(0)
 
@@ -398,10 +402,10 @@ def submit_test_event(idrac_ip: str, idrac_username: str, idrac_password: str, d
     response = requests.post(url, data=json.dumps(payload), headers=headers, verify=False,
                              auth=(idrac_username, idrac_password))
     if response.__dict__["status_code"] == 204:
-        print("\n- PASS, POST command succeeded, status code %s returned, event type \"%s\" successfully sent to " 
+        logging.info("\n- PASS, POST command succeeded, status code %s returned, event type \"%s\" successfully sent to " 
                      "destination \"%s\"" % (response.status_code, event_type, destination_url))
     else:
-        logging.error("FAIL. POST command failed, status code %s returned, error is %s" %
+        logging.error("- FAIL, POST command failed, status code %s returned, error: %s" %
                       (response.__dict__["status_code"], response.__dict__["_content"]))
         sys.exit(0)
 
@@ -422,7 +426,7 @@ def print_examples():
 
 if not args["script_examples"]:
     if not args["idrac_ip"] or not args["idrac_username"] or not args["idrac_password"]:
-        logging.error("When not using the --script-examples argument -ip, -u, and -p are required arguments.")
+        logging.error("- ERROR, when not using the --script-examples argument -ip, -u, and -p are required arguments.")
         sys.exit(0)
     else:
         validate_telemetry_support(args["idrac_ip"], args["idrac_username"], args["idrac_password"])
@@ -431,7 +435,7 @@ if args["create_sse_subscription"] or args["launch_sse_subscription"]:
     try:
         from sseclient import SSEClient
     except ModuleNotFoundError:
-        print("\n- WARNING, to use the SSE functionality you need the library sseclient. Install it with `pip install sseclient and execute script again `")
+        logging.warning("\n- WARNING, to use the SSE functionality you need the library sseclient. Install it with `pip install sseclient and execute script again `")
         sys.exit(0)
 
 
