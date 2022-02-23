@@ -6,7 +6,7 @@
 #
 # _author_ = Texas Roemer <Texas_Roemer@Dell.com>
 # _author_ = Grant Curell <grant_curell@dell.com>
-# _version_ = 4.0
+# _version_ = 5.0
 #
 # Copyright (c) 2022, Dell, Inc.
 #
@@ -89,9 +89,45 @@ def validate_telemetry_support(idrac_ip: str, idrac_username: str, idrac_passwor
         if "Data Center" in str(i["LicenseDescription"]):
             iDRAC_datacenter_license = "yes"
     if iDRAC_datacenter_license == "no":
-        logging.error("- ERROR, script can not be executed because either the Datacenter license is not installed or iDRAC firmware does not support Telemetry.")
+        logging.error("\n- ERROR, script can not be executed because iDRAC Datacenter license is not installed.")
         sys.exit(0)
-
+    while True:
+        url = 'https://{}/redfish/v1/Managers/iDRAC.Embedded.1/Attributes?$select=Attributes/Telemetry.1.EnableTelemetry'.format(idrac_ip)
+        headers = {'content-type': 'application/json'}
+        response = requests.get(url, headers=headers, verify=False, auth=(idrac_username, idrac_password))
+        if response.status_code != 200:
+            logging.error("- ERROR, status code %s returned for GET request to get Telemetry enabled attribute status" % response.status_code)
+            sys.exit(0)
+        data = response.json()
+        if data["Attributes"]["Telemetry.1.EnableTelemetry"] != "Enabled":
+            logging.error("\n- ERROR, iDRAC Datacenter license installed but Telemetry feature is not enabled.")    
+            user_input = str(input("- Enable iDRAC Telemetry feature: pass in \"y\" to enable or \"n\" to not enable: "))
+            if user_input.lower() == "y":
+                payload = {"Attributes": {"Telemetry.1.EnableTelemetry": "Enabled"}}
+                headers = {'content-type': 'application/json'}
+                url = 'https://%s/redfish/v1/Managers/iDRAC.Embedded.1/Attributes' % idrac_ip
+                response = requests.patch(url, data=json.dumps(payload), headers=headers, verify=False, auth=(idrac_username, idrac_password))
+                status_code = response.status_code
+                if status_code == 200:
+                    logging.info("- PASS, PATCH command succeeded and set iDRAC attribute \"Telemetry.1.EnableTelemetry\" to enabled")
+                else:
+                    logging.error("FAIL, PATCH command failed to set iDRAC attribute \"Telemetry.1.EnableTelemetry\" to enabled")
+                    sys.exit(0)
+            elif user_input.lower() == "n":
+                sys.exit(0)
+            else:
+                logging.error("- ERROR, invalid value passed in for user input")
+                sys.exit(0)
+        elif data["Attributes"]["Telemetry.1.EnableTelemetry"] == "Enabled":
+            logging.info("- PASS, iDRAC attribute \"Telemetry.1.EnableTelemetry\" successfully set to Enabled")
+            break
+        else:
+            logging.error("- ERROR, unable to get iDRAC attribute \"Telemetry.1.EnableTelemetry\" current value, script will exit")
+            sys.exit(0)
+            
+        
+            
+            
 
 def get_event_service_properties(idrac_ip: str, idrac_username: str, idrac_password: str):
     """
