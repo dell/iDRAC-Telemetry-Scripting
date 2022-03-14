@@ -35,7 +35,7 @@ parser.add_argument('-ip', help='iDRAC IP address, argument only required if con
 parser.add_argument('-u', help='iDRAC username, argument only required if configuring one iDRAC', required=False)
 parser.add_argument('-p', help='iDRAC password, argument only required if configuring one iDRAC', required=False)
 parser.add_argument('-s', help='Pass in the report status to be set. Possible values are Enabled/Disabled', default='Enabled', required=False)
-parser.add_argument('-f', help='Pass in csv file name. If file is not located in same directory as script, pass in the full directory path with file name', required=False)
+parser.add_argument('-f', help='Pass in csv file name. If file is not located in same directory as script, pass in the full directory path with file name. NOTE: Make sure to use iDRACs.csv file from the repo which has the correct format.', required=False)
 
 args = vars(parser.parse_args())
 
