@@ -6,7 +6,7 @@
 #
 # _author_ = Texas Roemer <Texas_Roemer@Dell.com>
 # _author_ = Grant Curell <grant_curell@dell.com>
-# _version_ = 5.0
+# _version_ = 6.0
 #
 # Copyright (c) 2022, Dell, Inc.
 #
@@ -63,71 +63,7 @@ parser.add_argument('--message-id', '-M', help='Pass in MessageID for sending te
 parser.add_argument('--delete', help='Pass in complete service subscription URI to delete. Execute -s argument if '
                     'needed to get subscription URIs', required=False)
 args = vars(parser.parse_args())
-logging.basicConfig(format='%(message)s', stream=sys.stdout, level=logging.INFO)
-
-def validate_telemetry_support(idrac_ip: str, idrac_username: str, idrac_password: str):
-    """
-    Ensures that the targeted server supports telemetry before we take action
-
-    :param idrac_ip: IP address of the target iDRAC
-    :param idrac_username: Username of the target iDRAC
-    :param idrac_password: Password of the target iDRAC
-    """
-
-    url = 'https://{}/redfish/v1/Managers/iDRAC.Embedded.1/Oem/Dell/DellLicenses'.format(idrac_ip)
-    headers = {'content-type': 'application/json'}
-    response = requests.get(url, headers=headers, verify=False, auth=(idrac_username, idrac_password))
-    if response.status_code == 401:
-        logging.error("- ERROR, status code 401 returned for GET request, invalid user credentials detected.")
-        sys.exit(0)
-    iDRAC_datacenter_license = "no"
-    data = response.json()
-    if response.status_code != 200:
-        logging.error("- ERROR, status code %s returned for GET request" % response.status_code)
-        sys.exit(0)
-    for i in data["Members"]:
-        if "Data Center" in str(i["LicenseDescription"]):
-            iDRAC_datacenter_license = "yes"
-    if iDRAC_datacenter_license == "no":
-        logging.error("\n- ERROR, script can not be executed because iDRAC Datacenter license is not installed.")
-        sys.exit(0)
-    while True:
-        url = 'https://{}/redfish/v1/Managers/iDRAC.Embedded.1/Attributes?$select=Attributes/Telemetry.1.EnableTelemetry'.format(idrac_ip)
-        headers = {'content-type': 'application/json'}
-        response = requests.get(url, headers=headers, verify=False, auth=(idrac_username, idrac_password))
-        if response.status_code != 200:
-            logging.error("- ERROR, status code %s returned for GET request to get Telemetry enabled attribute status" % response.status_code)
-            sys.exit(0)
-        data = response.json()
-        if data["Attributes"]["Telemetry.1.EnableTelemetry"] != "Enabled":
-            logging.error("\n- ERROR, iDRAC Datacenter license installed but Telemetry feature is not enabled.")    
-            user_input = str(input("- Enable iDRAC Telemetry feature: pass in \"y\" to enable or \"n\" to not enable: "))
-            if user_input.lower() == "y":
-                payload = {"Attributes": {"Telemetry.1.EnableTelemetry": "Enabled"}}
-                headers = {'content-type': 'application/json'}
-                url = 'https://%s/redfish/v1/Managers/iDRAC.Embedded.1/Attributes' % idrac_ip
-                response = requests.patch(url, data=json.dumps(payload), headers=headers, verify=False, auth=(idrac_username, idrac_password))
-                status_code = response.status_code
-                if status_code == 200:
-                    logging.info("- PASS, PATCH command succeeded and set iDRAC attribute \"Telemetry.1.EnableTelemetry\" to enabled")
-                else:
-                    logging.error("FAIL, PATCH command failed to set iDRAC attribute \"Telemetry.1.EnableTelemetry\" to enabled")
-                    sys.exit(0)
-            elif user_input.lower() == "n":
-                sys.exit(0)
-            else:
-                logging.error("- ERROR, invalid value passed in for user input")
-                sys.exit(0)
-        elif data["Attributes"]["Telemetry.1.EnableTelemetry"] == "Enabled":
-            logging.info("- PASS, iDRAC attribute \"Telemetry.1.EnableTelemetry\" successfully set to Enabled")
-            break
-        else:
-            logging.error("- ERROR, unable to get iDRAC attribute \"Telemetry.1.EnableTelemetry\" current value, script will exit")
-            sys.exit(0)
-            
-        
-            
-            
+logging.basicConfig(format='%(message)s', stream=sys.stdout, level=logging.INFO)            
 
 def get_event_service_properties(idrac_ip: str, idrac_username: str, idrac_password: str):
     """
@@ -394,12 +330,12 @@ def launch_sse_subscription(idrac_ip: str, idrac_username: str, idrac_password: 
     :param idrac_password: Password of the target iDRAC
     """
     if platform.system().lower() == "windows":   
-        os.system("start cmd /k python github_test.py -ip %s -u %s -p %s --create-sse-subscription" % (idrac_ip, idrac_username, idrac_password))
+        os.system("start cmd /k python SubscriptionManagementREDFISH.py -ip %s -u %s -p %s --create-sse-subscription" % (idrac_ip, idrac_username, idrac_password))
     elif platform.system().lower() == "linux":
         if platform.python_version()[0] == "2":
-            os.system("gnome-terminal --command=\"bash -c 'python github_test.py -ip %s -u %s -p %s --create-sse-subscription; $SHELL'\"" % (idrac_ip, idrac_username, idrac_password))
+            os.system("gnome-terminal --command=\"bash -c 'python SubscriptionManagementREDFISH.py -ip %s -u %s -p %s --create-sse-subscription; $SHELL'\"" % (idrac_ip, idrac_username, idrac_password))
         elif platform.python_version()[0] == "3":
-            os.system("gnome-terminal --command=\"bash -c 'python3 github_test.py -ip %s -u %s -p %s --create-sse-subscription; $SHELL'\"" % (idrac_ip, idrac_username, idrac_password))
+            os.system("gnome-terminal --command=\"bash -c 'python3 SubscriptionManagementREDFISH.py -ip %s -u %s -p %s --create-sse-subscription; $SHELL'\"" % (idrac_ip, idrac_username, idrac_password))
 def create_sse_subscription(idrac_ip: str, idrac_username: str, idrac_password: str):
     """
     Creates an SSE subscription to the iDRAC. It will print all output to console in the foreground.
@@ -464,8 +400,6 @@ if not args["script_examples"]:
     if not args["idrac_ip"] or not args["idrac_username"] or not args["idrac_password"]:
         logging.error("- ERROR, when not using the --script-examples argument -ip, -u, and -p are required arguments.")
         sys.exit(0)
-    else:
-        validate_telemetry_support(args["idrac_ip"], args["idrac_username"], args["idrac_password"])
 
 if args["create_sse_subscription"] or args["launch_sse_subscription"]:
     try:
