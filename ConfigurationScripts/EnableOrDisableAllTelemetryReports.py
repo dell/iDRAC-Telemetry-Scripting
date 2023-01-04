@@ -1,4 +1,3 @@
-#
 # EnableOrDisableAllTelemetryReports.py Python script using Redfish API to Enable or Disable All Telemetry Reports
 # with Default/Existing settings.
 #
@@ -50,12 +49,11 @@ def print_examples():
         '\n\'EnableOrDisableAllTelemetryReports.py -ip 192.168.0.120 -u root -p calvin -s Disabled -f C:\Python39\iDRACs.csv, this example will disable Telemetry and all metric reports for all iDRACs in CSV file.\n')
 
 def get_attributes(ip, user, pwd):
-    """ Checks the current status of telemetry and returns it
-
-    Returns: A dictionary containing the attributes of the current telemetry status
+    """ Checks the current status of telemetry and creates telemetry_attributes, a list of telemetry attributes
     """
     global telemetry_attributes
-    url = 'https://{}/redfish/v1/Managers/iDRAC.Embedded.1/Attributes'.format(ip)
+    # Use redfish API instead of AR
+    url = 'https://{}/redfish/v1/TelemetryService/MetricReportDefinitions'.format(ip)
     headers = {'content-type': 'application/json'}
     response = requests.get(url, headers=headers, verify=False, auth=(user, pwd))
     if response.status_code != 200:
@@ -64,33 +62,35 @@ def get_attributes(ip, user, pwd):
     try:
         logging.info("- INFO, successfully pulled configuration attributes")
         configurations_dict = json.loads(response.text)
-        attributes = configurations_dict.get('Attributes', {})
-        telemetry_attributes = {k: v for k, v in attributes.items() if
-                                (k.startswith('Telemetry')) and (k.endswith("EnableTelemetry"))}
-        logging.info("- INFO, current iDRAC Telemetry global setting: '{}'".format(
-            telemetry_attributes.get('Telemetry.1.EnableTelemetry', 'Unknown')))
+        attributes = configurations_dict.get('Members', {})
+        telemetry_attributes = [map['@odata.id'] for map in attributes]
         logging.debug(telemetry_attributes)
     except Exception as e:
         logging.error("- FAIL: detailed error message: {0}".format(e))
         sys.exit()
-    #return telemetry_attributes
 
 
 def set_attributes(ip, user, pwd):
-    """Uses the RedFish API to set the telemetry enabled attribute to true.
+    """Uses the RedFish API to set the telemetry enabled attribute to user defined status.
 
     Args:
-        telemetry_attributes (dict): A dictionary containing the attributes of the current telemetry status
+        telemetry_attributes (list): A list containing all telemetry attributes attributes 
     """
 
     status_to_set = args["s"]
     if status_to_set not in ['Enabled', 'Disabled']:
         logging.error("Invalid value for report status. Supported values are Enabled & Disabled")
         sys.exit()
-    url = 'https://{}/redfish/v1/Managers/iDRAC.Embedded.1/Attributes'.format(ip)
     headers = {'content-type': 'application/json'}
-    updated_telemetry_attributes = {k: status_to_set for k in telemetry_attributes.keys()}
-    response = requests.patch(url, data=json.dumps({"Attributes": updated_telemetry_attributes}), headers=headers,
+    # Go to each metric report definition and enable or disable based on input
+    for uri in telemetry_attributes:
+        url = 'https://{}{}'.format(ip,uri)
+        response = requests.patch(url, data=json.dumps({"MetricReportDefinitionEnabled": status_to_set=='Enabled'}), headers=headers,
+                              verify=False, auth=(user, pwd))
+    
+    # Enable and disable global telemetry service
+    url = 'https://{}/redfish/v1/TelemetryService'.format(ip)
+    response = requests.patch(url, data=json.dumps({"ServiceEnabled": status_to_set=='Enabled'}), headers=headers,
                               verify=False, auth=(user, pwd))
     if response.status_code != 200:
         logging.error("- FAIL, status code for reading attributes is not 200, code is: {}".format(response.status_code))
