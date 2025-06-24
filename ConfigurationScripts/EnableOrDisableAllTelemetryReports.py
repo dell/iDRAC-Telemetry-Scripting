@@ -82,12 +82,6 @@ def set_attributes(ip, user, pwd):
         logging.error("Invalid value for report status. Supported values are Enabled & Disabled")
         sys.exit()
     headers = {'content-type': 'application/json'}
-    # Go to each metric report definition and enable or disable based on input
-    for uri in telemetry_attributes:
-        url = 'https://{}{}'.format(ip,uri)
-        response = requests.patch(url, data=json.dumps({"MetricReportDefinitionEnabled": status_to_set=='Enabled'}), headers=headers,
-                              verify=False, auth=(user, pwd))
-    
     # Enable and disable global telemetry service
     url = 'https://{}/redfish/v1/TelemetryService'.format(ip)
     response = requests.patch(url, data=json.dumps({"ServiceEnabled": status_to_set=='Enabled'}), headers=headers,
@@ -96,6 +90,13 @@ def set_attributes(ip, user, pwd):
         logging.error("- FAIL, status code for reading attributes is not 200, code is: {}".format(response.status_code))
         logging.debug(str(response))
         sys.exit()
+
+    # Go to each metric report definition and enable or disable based on input
+    for uri in telemetry_attributes:
+        url = 'https://{}{}'.format(ip,uri)
+        response = requests.patch(url, data=json.dumps({"MetricReportDefinitionEnabled": status_to_set=='Enabled'}), headers=headers,
+                              verify=False, auth=(user, pwd))
+    
     logging.info("- INFO, successfully '{}' iDRAC Telemetry and all supported metric reports".format(status_to_set))
 
 
