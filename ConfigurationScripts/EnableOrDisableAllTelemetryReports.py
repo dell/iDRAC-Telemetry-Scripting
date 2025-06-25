@@ -82,9 +82,8 @@ def set_attributes(ip, user, pwd):
         logging.error("Invalid value for report status. Supported values are Enabled & Disabled")
         sys.exit()
     headers = {'content-type': 'application/json'}
-    # Enable and disable global telemetry service
-
     
+    # Enable global telemetry service    
     if status_to_set == 'Enabled':
         url = 'https://{}/redfish/v1/TelemetryService'.format(ip)
         response = requests.patch(url, data=json.dumps({"ServiceEnabled": true}), headers=headers,
@@ -105,6 +104,7 @@ def set_attributes(ip, user, pwd):
         logging.debug(str(response))
         sys.exit()
 
+    # Disable global telemetry service 
     if status_to_set == 'Disabled':
         url = 'https://{}/redfish/v1/TelemetryService'.format(ip)
         response = requests.patch(url, data=json.dumps({"ServiceEnabled": false}), headers=headers,
