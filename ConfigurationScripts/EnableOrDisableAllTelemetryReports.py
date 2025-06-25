@@ -87,7 +87,7 @@ def set_attributes(ip, user, pwd):
     
     if status_to_set == 'Enabled':
         url = 'https://{}/redfish/v1/TelemetryService'.format(ip)
-        response = requests.patch(url, data=json.dumps({"ServiceEnabled": status_to_set=='Enabled'}), headers=headers,
+        response = requests.patch(url, data=json.dumps({"ServiceEnabled": true}), headers=headers,
                                 verify=False, auth=(user, pwd))
         if response.status_code != 200:
             logging.error("- FAIL, status code for reading attributes is not 200, code is: {}".format(response.status_code))
@@ -107,7 +107,7 @@ def set_attributes(ip, user, pwd):
 
     if status_to_set == 'Disabled':
         url = 'https://{}/redfish/v1/TelemetryService'.format(ip)
-        response = requests.patch(url, data=json.dumps({"ServiceEnabled": status_to_set=='Enabled'}), headers=headers,
+        response = requests.patch(url, data=json.dumps({"ServiceEnabled": false}), headers=headers,
                                 verify=False, auth=(user, pwd))
 
         if response.status_code != 200:
