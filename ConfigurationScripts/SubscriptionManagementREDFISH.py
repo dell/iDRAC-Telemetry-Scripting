@@ -6,7 +6,7 @@
 #
 # _author_ = Texas Roemer <Texas_Roemer@Dell.com>
 # _author_ = Grant Curell <grant_curell@dell.com>
-# _version_ = 6.0
+# _version_ = 7.0
 #
 # Copyright (c) 2022, Dell, Inc.
 #
@@ -26,7 +26,9 @@ import os
 import platform
 import re
 import requests
+import subprocess
 import sys
+import tempfile
 import time
 import warnings
 from pprint import pprint
@@ -323,19 +325,79 @@ def create_post_subscription(idrac_ip: str, idrac_username: str, idrac_password:
 
 def launch_sse_subscription(idrac_ip: str, idrac_username: str, idrac_password: str):
     """
-    Creates an SSE subscription to the iDRAC. It will launch a new command window to start the SSE subscription which is recommended to use. 
+    Launches an SSE session in a new terminal window performing a streaming GET
+    against /redfish/v1/SSE. Compatible with Windows and Linux.
 
     :param idrac_ip: IP address of the target iDRAC
     :param idrac_username: Username of the target iDRAC
     :param idrac_password: Password of the target iDRAC
     """
-    if platform.system().lower() == "windows":   
-        os.system("start cmd /k python SubscriptionManagementREDFISH.py -ip %s -u %s -p %s --create-sse-subscription" % (idrac_ip, idrac_username, idrac_password))
-    elif platform.system().lower() == "linux":
-        if platform.python_version()[0] == "2":
-            os.system("gnome-terminal --command=\"bash -c 'python SubscriptionManagementREDFISH.py -ip %s -u %s -p %s --create-sse-subscription; $SHELL'\"" % (idrac_ip, idrac_username, idrac_password))
-        elif platform.python_version()[0] == "3":
-            os.system("gnome-terminal --command=\"bash -c 'python3 SubscriptionManagementREDFISH.py -ip %s -u %s -p %s --create-sse-subscription; $SHELL'\"" % (idrac_ip, idrac_username, idrac_password))
+    sse_script = (
+        "import requests, warnings, sys\n"
+        "warnings.filterwarnings('ignore')\n"
+        "idrac_ip = %r\n"
+        "idrac_username = %r\n"
+        "idrac_password = %r\n"
+        "url = 'https://' + idrac_ip + '/redfish/v1/SSE'\n"
+        "print('\\n- INFO, connecting to SSE stream: ' + url)\n"
+        "try:\n"
+        "    response = requests.get(url, auth=(idrac_username, idrac_password), verify=False, stream=True)\n"
+        "    print('- INFO, response status code: ' + str(response.status_code))\n"
+        "    if response.status_code != 200:\n"
+        "        print('- FAIL, GET request failed, status code ' + str(response.status_code))\n"
+        "        input('\\nPress Enter to close...')\n"
+        "        sys.exit(1)\n"
+        "    print('- INFO, SSE stream started, waiting for events...\\n')\n"
+        "    for line in response.iter_lines():\n"
+        "        if line:\n"
+        "            print(line.decode('utf-8', errors='replace'))\n"
+        "except KeyboardInterrupt:\n"
+        "    print('\\n- INFO, SSE stream stopped by user')\n"
+        "except Exception as e:\n"
+        "    print('- FAIL, error during SSE stream: ' + str(e))\n"
+        "    input('\\nPress Enter to close...')\n"
+        "    sys.exit(1)\n"
+        "input('\\nPress Enter to close...')\n"
+    ) % (idrac_ip, idrac_username, idrac_password)
+
+    tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False)
+    tmp.write(sse_script)
+    tmp.close()
+    script_path = tmp.name
+
+    python_exe = sys.executable
+    current_os = platform.system().lower()
+
+    if current_os == "windows":
+        subprocess.Popen([python_exe, script_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
+        logging.info("- INFO, SSE subscription launched in a new terminal window")
+    elif current_os == "linux":
+        terminals = [
+            ['gnome-terminal', '--', python_exe, script_path],
+            ['xterm', '-e', python_exe + ' ' + script_path],
+            ['konsole', '-e', python_exe, script_path],
+            ['xfce4-terminal', '-e', python_exe + ' ' + script_path],
+        ]
+        launched = False
+        for terminal_cmd in terminals:
+            if subprocess.call(['which', terminal_cmd[0]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+                subprocess.Popen(terminal_cmd)
+                launched = True
+                break
+        if not launched:
+            logging.error("- FAIL, no supported terminal emulator found (tried gnome-terminal, xterm, konsole, xfce4-terminal)")
+            os.unlink(script_path)
+            return
+        logging.info("- INFO, SSE subscription launched in a new terminal window")
+    else:
+        logging.error("- FAIL, unsupported OS: %s" % platform.system())
+        os.unlink(script_path)
+        return
+
+
+
+
+            
 def create_sse_subscription(idrac_ip: str, idrac_username: str, idrac_password: str):
     """
     Creates an SSE subscription to the iDRAC. It will print all output to console in the foreground.
@@ -401,7 +463,7 @@ if not args["script_examples"]:
         logging.error("- ERROR, when not using the --script-examples argument -ip, -u, and -p are required arguments.")
         sys.exit(0)
 
-if args["create_sse_subscription"] or args["launch_sse_subscription"]:
+if args["create_sse_subscription"]:
     try:
         from sseclient import SSEClient
     except ModuleNotFoundError:
